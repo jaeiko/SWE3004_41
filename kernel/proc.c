@@ -6,6 +6,15 @@
 #include "proc.h"
 #include "defs.h"
 
+static char *states[] = {
+[UNUSED]    "unused",
+[USED]      "used",
+[SLEEPING]  "sleep ",
+[RUNNABLE]  "runble",
+[RUNNING]   "run   ",
+[ZOMBIE]    "zombie"
+};
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -124,6 +133,8 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+
+  p->nice = 20;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -411,6 +422,54 @@ kwait(uint64 addr)
   }
 }
 
+int
+kwaitpid(int pid, uint64 addr)
+{
+  struct proc *pp;
+  int havekids;
+  struct proc *p = myproc();
+
+  acquire(&wait_lock);
+
+  for(;;){
+    // Scan through table looking for exited children with matching pid.
+    havekids = 0;
+    for(pp = proc; pp < &proc[NPROC]; pp++){
+      // Look for a child with the specific pid.
+      if(pp->parent == p && pp->pid == pid){
+        // make sure the child isn't still in exit() or swtch().
+        acquire(&pp->lock);
+
+        havekids = 1;
+        if(pp->state == ZOMBIE){
+          // Found one.
+          if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
+                                  sizeof(pp->xstate)) < 0) {
+            release(&pp->lock);
+            release(&wait_lock);
+            return -1;
+          }
+          freeproc(pp);
+          release(&pp->lock);
+          release(&wait_lock);
+          return 0; // Return 0 on success as per the project spec.
+        }
+        release(&pp->lock);
+      }
+    }
+
+    // No point waiting if we don't have any children with that pid.
+    // Or if the process has been killed.
+    if(!havekids || killed(p)){
+      release(&wait_lock);
+      return -1;
+    }
+    
+    // Wait for a child to exit.
+    sleep(p, &wait_lock);
+  }
+}
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -662,14 +721,6 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
 void
 procdump(void)
 {
-  static char *states[] = {
-  [UNUSED]    "unused",
-  [USED]      "used",
-  [SLEEPING]  "sleep ",
-  [RUNNABLE]  "runble",
-  [RUNNING]   "run   ",
-  [ZOMBIE]    "zombie"
-  };
   struct proc *p;
   char *state;
 
@@ -684,4 +735,65 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+int
+getnice(int pid)
+{
+  struct proc *p;
+  // Tours the process table and finds the process whose pid matches
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if (p->pid == pid) {
+      int nice_val = p->nice;
+      release(&p->lock);
+      return nice_val; // Return the nice value if found
+    }
+    release(&p->lock);
+  }
+  return -1; // Return -1 if you can't find it
+}
+
+int
+setnice(int pid, int value)
+{
+  // Valid range check of nice value (0-39)
+  if (value < 0 || value > 39) {
+    return -1;
+  }
+
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if (p->pid == pid) {
+      p->nice = value; // Set the nice value to a new value
+      release(&p->lock);
+      return 0; // Return 0 on success
+    }
+    release(&p->lock);
+  }
+  return -1; // Return -1 if process is not found
+}
+
+int
+ps(int pid)
+{
+  struct proc *p;
+  char *state;
+  printf("name\tpid\tstate\t\tpriority\n");
+
+  for(p = proc; p < &proc[NPROC]; p++) {
+    if (p->state == UNUSED)
+      continue;
+
+    if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
+      state = states[p->state];
+    else
+      state = "???";
+
+    if (pid == 0 || p->pid == pid) {
+      printf("%s\t%d\t%s\t%d\n", p->name, p->pid, state, p->nice);
+    }
+  }
+  return 0;
 }
