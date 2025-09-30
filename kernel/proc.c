@@ -422,6 +422,9 @@ kwait(uint64 addr)
   }
 }
 
+// A function that performs the core function of waitpid system calls.
+// Stop and wait for the current process to run until the child process with a specific pid is terminated (it comes to the ZOMBIE state).
+// Returns 0 for success and -1 for failure.
 int
 kwaitpid(int pid, uint64 addr)
 {
@@ -429,20 +432,24 @@ kwaitpid(int pid, uint64 addr)
   int havekids;
   struct proc *p = myproc();
 
+  // wait_lock is a lock to prevent multiple processes from modifying the status of parents and children (p->parent, p->state) at the same time.
   acquire(&wait_lock);
 
+  // Continue to check through an infinite loop until the child is terminated.
   for(;;){
-    // Scan through table looking for exited children with matching pid.
-    havekids = 0;
+    havekids = 0; // A flag to check if there is a child process with the specific pid.
     for(pp = proc; pp < &proc[NPROC]; pp++){
       // Look for a child with the specific pid.
+      // condtion 1 - pp->parent == p: Check if pp is a child process of the current process p.
+      // condtion 2 - pp->pid == pid: Check if the pid of pp matches the specific pid passed to kwaitpid().
       if(pp->parent == p && pp->pid == pid){
         // make sure the child isn't still in exit() or swtch().
         acquire(&pp->lock);
 
         havekids = 1;
+        // If the child process is in the ZOMBIE state, it means that it has been terminated.
         if(pp->state == ZOMBIE){
-          // Found one.
+          // Freeeprocs the resources used by the child process, returns a success (0) and exits the function.
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
                                   sizeof(pp->xstate)) < 0) {
             release(&pp->lock);
@@ -452,20 +459,20 @@ kwaitpid(int pid, uint64 addr)
           freeproc(pp);
           release(&pp->lock);
           release(&wait_lock);
-          return 0; // Return 0 on success as per the project spec.
+          return 0; // Return 0 on success.
         }
         release(&pp->lock);
       }
     }
 
-    // No point waiting if we don't have any children with that pid.
-    // Or if the process has been killed.
+    // If !havekids or killed(p) is true, it indicates that there is no child process with the specific pid or the current process has been killed.
+    // In this case, it releases the wait_lock and returns -1 to indicate failure.
     if(!havekids || killed(p)){
       release(&wait_lock);
       return -1;
     }
     
-    // Wait for a child to exit.
+    // If the child process with the specific pid is not yet terminated, the current process goes to sleep and waits.
     sleep(p, &wait_lock);
   }
 }
@@ -737,6 +744,9 @@ procdump(void)
   }
 }
 
+// The getnice function obtains the nice value of a process.
+// Gets the 'nice' value for a given process ID.
+// Return the nice value of target process on success. Return -1 if there is no process corresponding to the pid
 int
 getnice(int pid)
 {
@@ -747,13 +757,15 @@ getnice(int pid)
     if (p->pid == pid) {
       int nice_val = p->nice;
       release(&p->lock);
-      return nice_val; // Return the nice value if found
+      return nice_val; // Return the nice value of target process on success. 
     }
     release(&p->lock);
   }
-  return -1; // Return -1 if you can't find it
+  return -1; // Return -1 if there is no process corresponding to the pid.
 }
 
+// The setnice function sets the nice value of a process.
+// Return 0 on success. Return -1 if there is no process corresponding to the pid or the nice value is invalid.
 int
 setnice(int pid, int value)
 {
@@ -766,7 +778,7 @@ setnice(int pid, int value)
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
     if (p->pid == pid) {
-      p->nice = value; // Set the nice value to a new value
+      p->nice = value; // Update the nice value.
       release(&p->lock);
       return 0; // Return 0 on success
     }
@@ -775,22 +787,28 @@ setnice(int pid, int value)
   return -1; // Return -1 if process is not found
 }
 
+//  ps system call prints out process(s)’s information, which includes name, pid, state and priority(nice value) of each process.
 int
 ps(int pid)
 {
   struct proc *p;
   char *state;
-  printf("name\tpid\tstate\t\tpriority\n");
+  printf("name\tpid\tstate\tpriority\n");
 
   for(p = proc; p < &proc[NPROC]; p++) {
+    // Skip unused process table entries.
     if (p->state == UNUSED)
       continue;
 
+    // Convert the process state enum to a printable string.
     if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
       state = states[p->state];
     else
       state = "???";
 
+    // If the pid is 0, print out all processes’ information.
+    // Otherwise, print out corresponding process’s information.
+    // If there is no process corresponding to the pid, print out nothing. 
     if (pid == 0 || p->pid == pid) {
       printf("%s\t%d\t%s\t%d\n", p->name, p->pid, state, p->nice);
     }

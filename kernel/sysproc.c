@@ -131,19 +131,28 @@ sys_ps(void)
   return ps(pid);
 }
 
+// The wrapper function of the meminfo system call.
+// It serves as a bridge between the meminfo() call of the user program and the actual kernel functionality.
 uint64
 sys_meminfo(void)
 {
+  // Call the count_freemem() function to get the number of free memory pages, multiply it by the page size (PGSIZE) to convert it to bytes, and return the result to the user program.
   return count_freemem() * PGSIZE;
 }
 
+// A wrapper function of a waitpid system call.
+// Safely import the parameters (pid, addr) passed by the user program into the kernel space and pass them to the kwaitpid() function that performs the actual function.
 uint64
 sys_waitpid(void)
 {
   int pid;
   uint64 addr;
   
+  // argint(0, &pid) securely copies the first factor delivered by the user program to the pid variable in the kernel.
   argint(0, &pid);
+  // argaddr(1, &addr) copies the second factor (the address to store the child's termination state) to the addr variable in the kernel.
   argaddr(1, &addr);
+
+  // Hand over the imported factors to the kwaitpid() function and return the result.
   return kwaitpid(pid, addr);
 }

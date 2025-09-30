@@ -39,13 +39,20 @@ freerange(void *pa_start, void *pa_end)
     kfree(p);
 }
 
+// Key function of meminfo system call.
+// Calculates the total number of free memory pages managed by the kernel.
+// This value is converted in bytes in sys_meminfo() and returned to the user.
 uint64
 count_freemem(void)
 {
   struct run *r;
   uint64 count = 0;
 
+  // Multiple CPUs can access freelist at the same time, so obtain locks for data consistency.
   acquire(&kmem.lock);
+
+  // kmem.freelist is a linked list of available memory pages.
+  // Tour this list and count the number of pages.
   r = kmem.freelist;
   while(r){
     count++;
