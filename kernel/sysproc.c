@@ -146,13 +146,11 @@ uint64
 sys_waitpid(void)
 {
   int pid;
-  uint64 addr;
   
   // argint(0, &pid) securely copies the first factor delivered by the user program to the pid variable in the kernel.
   argint(0, &pid);
   // argaddr(1, &addr) copies the second factor (the address to store the child's termination state) to the addr variable in the kernel.
-  argaddr(1, &addr);
 
   // Hand over the imported factors to the kwaitpid() function and return the result.
-  return kwaitpid(pid, addr);
+  return kwaitpid(pid);
 }

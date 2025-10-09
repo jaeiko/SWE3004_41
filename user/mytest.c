@@ -28,7 +28,7 @@ waitpid_test()
 
   for(i = 0; i < 2; i++){
     int child_pid = pids[i];
-    waitpid(child_pid, 0);
+    waitpid(child_pid);
     printf("done%d %d %d\n", i + 1, child_pid, 10);
   }
 }

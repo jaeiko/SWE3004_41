@@ -7,12 +7,12 @@
 #include "defs.h"
 
 static char *states[] = {
-[UNUSED]    "unused",
-[USED]      "used",
-[SLEEPING]  "sleep ",
-[RUNNABLE]  "runble",
-[RUNNING]   "run   ",
-[ZOMBIE]    "zombie"
+[UNUSED]    "UNUSED  ",
+[USED]      "USED    ",
+[SLEEPING]  "SLEEPING",
+[RUNNABLE]  "RUNNABLE",
+[RUNNING]   "RUNNING ",
+[ZOMBIE]    "ZOMBIE  "
 };
 
 struct cpu cpus[NCPU];
@@ -426,7 +426,7 @@ kwait(uint64 addr)
 // Stop and wait for the current process to run until the child process with a specific pid is terminated (it comes to the ZOMBIE state).
 // Returns 0 for success and -1 for failure.
 int
-kwaitpid(int pid, uint64 addr)
+kwaitpid(int pid)
 {
   struct proc *pp;
   int havekids;
@@ -449,13 +449,7 @@ kwaitpid(int pid, uint64 addr)
         havekids = 1;
         // If the child process is in the ZOMBIE state, it means that it has been terminated.
         if(pp->state == ZOMBIE){
-          // Freeeprocs the resources used by the child process, returns a success (0) and exits the function.
-          if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
-                                  sizeof(pp->xstate)) < 0) {
-            release(&pp->lock);
-            release(&wait_lock);
-            return -1;
-          }
+          // Freeeprocs the resources used by the child process, returns a success (0) and exits the function
           freeproc(pp);
           release(&pp->lock);
           release(&wait_lock);
@@ -793,7 +787,7 @@ ps(int pid)
 {
   struct proc *p;
   char *state;
-  printf("name\tpid\tstate\tpriority\n");
+  printf("name\tpid\tstate\t\tpriority\n");
 
   for(p = proc; p < &proc[NPROC]; p++) {
     // Skip unused process table entries.

@@ -28,7 +28,7 @@ int getnice(int);
 int setnice(int, int);
 int ps(int);
 int meminfo(void);
-int waitpid(int, int*);
+int waitpid(int);
 
 // ulib.c
 int stat(const char*, struct stat*);
